@@ -31,8 +31,27 @@
   with_dict: "{{ wordpress_sites }}"
   notify: disable temporary challenge sites
 
+- name: Check whether current conf includes acme-challenge-location.conf
+  shell: 'awk "/include acme-challenge-location.conf/" {{ nginx_path }}/sites-enabled/{{ item.key }}.conf || echo "no conf file"'
+  register: acme_challenge_in_conf
+  changed_when: false
+  when: site_uses_letsencrypt
+  with_dict: "{{ wordpress_sites }}"
+
+- name: Add acme-challenge-location.conf include when missing
+  replace:
+    dest: "{{ nginx_path }}/sites-available/{{ item[0] }}.conf"
+    regexp: "{{ item[1].regexp }}"
+    replace: "{{ item[1].replace }}"
+  register: add_acme_challenge
+  when: sites_missing_acme_challenge | count
+  with_nested:
+    - "{{ sites_missing_acme_challenge }}"
+    - "{{ acme_challenge_replacements }}"
+  notify: reload nginx
+
 - include: "{{ playbook_dir }}/roles/common/tasks/reload_nginx.yml"
-  when: challenge_site_confs | changed or challenge_sites_enabled | changed
+  when: challenge_site_confs | changed or challenge_sites_enabled | changed or add_acme_challenge | changed
 
 - name: Create test Acme Challenge file
   shell: touch {{ acme_tiny_challenges_directory }}/ping.txt
