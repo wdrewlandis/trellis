@@ -28,10 +28,10 @@
   when: site_uses_letsencrypt
   with_dict: "{{ wordpress_sites }}"
 
-- name: Generate the initial certificate
+- name: Generate the certificate
   command: ./renew-certs.py
   args:
     chdir: "{{ acme_tiny_data_directory }}"
-  register: generate_initial_cert
-  changed_when: generate_initial_cert.stdout is defined and 'Created' in generate_initial_cert.stdout
+  register: generate_cert
+  changed_when: generate_cert.stdout is defined and 'Created' in generate_cert.stdout
   notify: reload nginx

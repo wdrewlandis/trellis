@@ -4,23 +4,28 @@ import os
 import sys
 import time
 
+from hashlib import sha1
 from subprocess import CalledProcessError, check_output, STDOUT
 
 certs_dir = '{{ letsencrypt_certs_dir }}'
 failed = False
-sites = {{ wordpress_sites }}
-sites = (k for k, v in sites.items() if 'ssl' in v and v['ssl'].get('enabled', False) and v['ssl'].get('provider', 'manual') == 'letsencrypt')
 
-for site in sites:
+for site in {{ sites_using_letsencrypt }}:
     cert_path = os.path.join(certs_dir, site + '.cert')
     bundled_cert_path = os.path.join(certs_dir, site + '-bundled.cert')
+
+    with open('{{ acme_tiny_data_directory }}/csrs/{0}.csr'.format(site), 'rb') as f:
+        csr_hash = sha1(f.read()).hexdigest()
 
     if os.access(cert_path, os.F_OK):
         stat = os.stat(cert_path)
         print 'Certificate file ' + cert_path + ' already exists'
 
-        if time.time() - stat.st_mtime < {{ letsencrypt_min_renewal_age }} * 86400:
-            print '  The certificate is younger than {{ letsencrypt_min_renewal_age }} days. Not creating a new certificate.\n'
+        with open(cert_path, 'r') as f:
+            csr_hash_in_cert = f.readline().strip()
+
+        if csr_hash == csr_hash_in_cert and time.time() - stat.st_mtime < {{ letsencrypt_min_renewal_age }} * 86400:
+            print '  The site hosts are unchanged and the certificate is younger than {{ letsencrypt_min_renewal_age }} days. Not creating a new certificate.\n'
             continue
 
     print 'Generating certificate for ' + site
@@ -40,7 +45,7 @@ for site in sites:
         print e.output
     else:
         with open(cert_path, 'w') as cert_file:
-            cert_file.write(cert)
+            cert_file.write('\n'.join([csr_hash, cert]))
 
         with open('{{ letsencrypt_intermediate_cert_path }}') as intermediate_cert_file:
             intermediate_cert = intermediate_cert_file.read()
